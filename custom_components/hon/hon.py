@@ -36,6 +36,27 @@ from .const import (
     DEVICE_MODEL,
 )
 
+# Fork patch: silence the AC buzzer for every command sent from Home Assistant.
+# On Haier/hOn air conditioners, echoStatus is sent with every command and decides
+# whether the unit beeps for THAT command ("1" = silent, "0" = beep, per this
+# integration's own mapping). The integration normally copies the last known value
+# from the cloud, which the unit keeps reporting as "0", so every command beeps.
+# Set to "0" if your unit turns out to use the opposite mapping, or None to disable.
+AC_FORCE_ECHO_STATUS = "1"
+
+
+def _force_silent_ac(appliance_type, parameters):
+    """Return parameters with echoStatus forced for AC units (copy, never mutates input)."""
+    if (AC_FORCE_ECHO_STATUS is None
+            or appliance_type != "AC"
+            or not isinstance(parameters, dict)
+            or "echoStatus" not in parameters):
+        return parameters
+    parameters = dict(parameters)
+    parameters["echoStatus"] = AC_FORCE_ECHO_STATUS
+    return parameters
+
+
 # CIAM access tokens expire after ~15 minutes, so refresh well before that.
 SESSION_TIMEOUT     = 600 # seconds
 
@@ -255,7 +276,7 @@ class HonConnection:
         command["device"] = json.loads(
             '{"mobileId":"xxxxxxxxxxxxxxxxxxx", "mobileOs": "android", "osVersion": "31", "appVersion": "1.53.4", "deviceModel": "lito"}'
         )
-        command["parameters"] = parameters
+        command["parameters"] = _force_silent_ac(typeName, parameters)
         command["timestamp"] = timestamp
         command["transactionId"] = mac + "_" + command["timestamp"]
         
@@ -298,7 +319,7 @@ class HonConnection:
                 "energyLabel": "0"
             },
             "ancillaryParameters": ancillary_parameters,
-            "parameters": parameters,
+            "parameters": _force_silent_ac(device.appliance_type, parameters),
             "applianceType": device.appliance_type
         }
         
